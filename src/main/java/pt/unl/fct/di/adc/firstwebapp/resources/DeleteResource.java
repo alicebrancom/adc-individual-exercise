@@ -35,8 +35,8 @@ public class DeleteResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteUser(DeleteData data) {
-        String username = data.input.username;
-        LOG.fine("Attempt to delete user: " + username);
+        String userToDelete = data.input.username;
+        LOG.fine("Attempt to delete user: " + userToDelete);
 
         TokenService tokenService = new TokenService(datastore);
         Response response = tokenService.validateToken(data.token);
@@ -45,22 +45,22 @@ public class DeleteResource {
             return response;
         }
 
-        Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
+        Key userKey = datastore.newKeyFactory().setKind("User").newKey(userToDelete);
         Entity user = datastore.get(userKey);
 
         if (user == null) {
             ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
             return Response.ok(g.toJson(msg)).build();
         }
-
-        String role = user.getString("user_role");
+        
+        String role = data.token.role;
         if (role.equals("USER") || role.equals("BOFFICER")) {
             ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
             return Response.ok(g.toJson(msg)).build();
         }
 
         try {
-            List<Entity> userTokens = tokenService.getUserTokens(username);
+            List<Entity> userTokens = tokenService.getUserTokens(userToDelete);
             Transaction txn = datastore.newTransaction();
 
             for (Entity token : userTokens) {
@@ -69,7 +69,7 @@ public class DeleteResource {
 
             txn.delete(userKey);
             txn.commit();
-            LOG.info("User deleted " + username);
+            LOG.info("User deleted " + userToDelete);
 
             SuccessMessage msg = new SuccessMessage(new Message("Account deleted successfully"));
             return Response.ok(g.toJson(msg)).build();

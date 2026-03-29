@@ -8,9 +8,11 @@ import pt.unl.fct.di.adc.firstwebapp.output.Errors;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 public class TokenService {
     private Datastore datastore;
+    private static final Logger LOG = Logger.getLogger(TokenService.class.getName());
 
     public TokenService(Datastore datastore) {
         this.datastore = datastore;
@@ -19,40 +21,45 @@ public class TokenService {
     public Response validateToken(AuthToken t) {
         if (emptyOrBlankField(t.tokenId) || emptyOrBlankField(t.username) || emptyOrBlankField(t.role)
                 || emptyOrBlankField(String.valueOf(t.issuedAt)) || emptyOrBlankField(String.valueOf(t.expiresAt))) {
-            System.err.println("DEBUG: Validation failed at Step 1 (Empty/Blank fields)");
             ErrorMessage msg = new ErrorMessage(Errors.INVALID_TOKEN);
             return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
         }
 
-        Transaction txn = datastore.newTransaction();
-        Key tokenKey = datastore.newKeyFactory().setKind("Token").newKey(t.tokenId);
-        Entity token = txn.get(tokenKey);
+        try {
+            Key tokenKey = datastore.newKeyFactory().setKind("Token").newKey(t.tokenId);
+            Entity token = datastore.get(tokenKey);
 
-        if (token == null) {
-            ErrorMessage msg = new ErrorMessage(Errors.INVALID_TOKEN);
-            return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+            if (token == null) {
+                ErrorMessage msg = new ErrorMessage(Errors.INVALID_TOKEN);
+                return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            String user = token.getString("token_user");
+            String role = token.getString("token_role");
+            long issuedAt = token.getLong("token_issuedAt");
+            long expiresAt = token.getLong("token_expiresAt");
+
+            if (!t.username.equals(user) || !t.role.equals(role) ||
+                    t.issuedAt != issuedAt || t.expiresAt != expiresAt) {
+                ErrorMessage msg = new ErrorMessage(Errors.INVALID_TOKEN);
+                return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            if (isExpired(token)) {
+                ErrorMessage msg = new ErrorMessage(Errors.TOKEN_EXPIRED);
+                return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            return Response.ok().build();
+        } catch (Exception e) {
+            LOG.severe("Error validating token: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error validating token.").build();
         }
+    }
 
-        String user = token.getString("token_user");
-        String role = token.getString("token_role");
-        Long issuedAt = token.getLong("token_issuedAt");
-        Long expiresAt = token.getLong("token_expiresAt");
-
-        if (!t.username.equals(user) || !t.role.equals(role) ||
-                !t.issuedAt.equals(issuedAt) || !t.expiresAt.equals(expiresAt)) {
-            ErrorMessage msg = new ErrorMessage(Errors.INVALID_TOKEN);
-            return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
-        }
-
-        long currentTime = System.currentTimeMillis();
-        if (expiresAt <= currentTime) {
-            ErrorMessage msg = new ErrorMessage(Errors.TOKEN_EXPIRED);
-            txn.delete(tokenKey);
-            return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
-        }
-
-        txn.commit();
-        return Response.ok().build();
+    public boolean isExpired(Entity token) {
+        long currentTime = System.currentTimeMillis() / 1000;
+        return token.getLong("token_expiresAt") <= currentTime;
     }
 
     public Entity getTokenEntity(AuthToken t) {
@@ -73,7 +80,6 @@ public class TokenService {
         while (userTokens.hasNext()) {
             list.add(userTokens.next());
         }
-
         return list;
     }
 

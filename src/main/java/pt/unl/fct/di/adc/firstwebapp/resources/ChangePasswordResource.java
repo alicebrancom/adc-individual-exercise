@@ -17,6 +17,7 @@ import com.google.cloud.datastore.Datastore;
 import com.google.cloud.datastore.Transaction;
 import com.google.cloud.datastore.DatastoreOptions;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import pt.unl.fct.di.adc.firstwebapp.output.*;
 import pt.unl.fct.di.adc.firstwebapp.util.*;
 
@@ -48,19 +49,22 @@ public class ChangePasswordResource {
             Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
             Entity user = txn.get(userKey);
 
-            if (user == null || !user.getString("user_pwd").equals(data.input.oldPassword)) {
-                txn.rollback();
-                ErrorMessage msg = new ErrorMessage(Errors.INVALID_CREDENTIALS);
-                return Response.ok(g.toJson(msg)).build();
-            }
-
             if (!username.equals(data.token.username)) {
                 txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            Entity updated = Entity.newBuilder(user).set("user_pwd", data.input.newPassword).build();
+            String inputOldPwd = DigestUtils.sha512Hex(data.input.oldPassword);
+
+            if (user == null || !user.getString("user_pwd").equals(inputOldPwd)) {
+                txn.rollback();
+                ErrorMessage msg = new ErrorMessage(Errors.INVALID_CREDENTIALS);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            String inputNewPwd = DigestUtils.sha512Hex(data.input.newPassword);
+            Entity updated = Entity.newBuilder(user).set("user_pwd", inputNewPwd).build();
             txn.put(updated);
             txn.commit();
             LOG.info("User password changed " + username);

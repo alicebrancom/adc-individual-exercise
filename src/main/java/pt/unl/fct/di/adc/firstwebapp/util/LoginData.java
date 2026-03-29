@@ -1,14 +1,15 @@
 package pt.unl.fct.di.adc.firstwebapp.util;
 
 public class LoginData {
-	public String username;
-	public String password;
+	public Input input;
 
 	public LoginData() {}
 
-	public LoginData(String userId, String password) {
-		this.username = userId;
-		this.password = password;
+	public static class Input {
+		public String username;
+		public String password;
+
+		public Input() {}
 	}
 
 	private boolean nonEmptyOrBlankField(String field) {
@@ -16,6 +17,6 @@ public class LoginData {
 	}
 
 	public boolean validLogin() {
-		return nonEmptyOrBlankField(username) && nonEmptyOrBlankField(password);
+		return nonEmptyOrBlankField(input.username) && nonEmptyOrBlankField(input.password);
 	}
 }

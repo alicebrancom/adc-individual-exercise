@@ -1,5 +1,6 @@
 package pt.unl.fct.di.adc.firstwebapp.resources;
 
+import java.util.List;
 import java.util.logging.Logger;
 
 import jakarta.ws.rs.POST;
@@ -54,15 +55,22 @@ public class ChangeRoleResource {
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            String role = user.getString("user_role");
+            String role = data.token.role;
             if (role.equals("USER") || role.equals("BOFFICER")) {
                 txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            Entity updated = Entity.newBuilder(user).set("user_role", data.input.newRole).build();
-            txn.put(updated);
+            Entity updatedUser = Entity.newBuilder(user).set("user_role", data.input.newRole).build();
+            txn.put(updatedUser);
+
+            List<Entity> userTokens = tokenService.getUserTokens(username);
+            for (Entity entity : userTokens) {
+                Entity updatedToken = Entity.newBuilder(entity).set("token_role", data.input.newRole).build();
+                txn.put(updatedToken);
+            }
+
             txn.commit();
             LOG.info("User role updated " + username);
 

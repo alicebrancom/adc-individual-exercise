@@ -54,7 +54,7 @@ public class ShowRoleResource {
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            String role = user.getString("user_role");
+            String role = data.token.role;
             if (role.equals("USER")) {
                 txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
@@ -62,7 +62,7 @@ public class ShowRoleResource {
             }
 
             LOG.info("User role received " + username);
-            SuccessMessage msg = new SuccessMessage(new ShowRoleOutput(username, role));
+            SuccessMessage msg = new SuccessMessage(new ShowRoleOutput(username, user.getString("user_role")));
             return Response.ok(g.toJson(msg)).build();
 
         } catch (Exception e) {

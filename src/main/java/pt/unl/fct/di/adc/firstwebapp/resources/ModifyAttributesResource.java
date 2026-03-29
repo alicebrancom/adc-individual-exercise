@@ -48,8 +48,8 @@ public class ModifyAttributesResource {
             return response;
         }
 
+        Transaction txn = datastore.newTransaction();
         try {
-            Transaction txn = datastore.newTransaction();
             Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
             Entity user = txn.get(userKey);
 
@@ -66,6 +66,7 @@ public class ModifyAttributesResource {
 
             if ((tokenRole.equals("USER") && !tokenUser.equals(username)) ||
                     (tokenRole.equals("BOFFICER") && !(userRole.equals("USER") || tokenUser.equals(username)))) {
+                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
@@ -74,11 +75,11 @@ public class ModifyAttributesResource {
             String address = data.input.attributes.address;
             String phone = data.input.attributes.phone;
 
-            if (address != null) {
+            if (address != null && !address.isBlank()) {
                 updated.set("user_address", address);
             }
 
-            if (phone != null) {
+            if (phone != null && !phone.isBlank()) {
                 updated.set("user_phone", phone);
             }
 
@@ -90,6 +91,7 @@ public class ModifyAttributesResource {
             return Response.ok(g.toJson(msg)).build();
 
         } catch (Exception e) {
+            txn.rollback();
             LOG.severe("Error modifying user attributes: " + e.getMessage());
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error modifying user attributes.").build();
         }

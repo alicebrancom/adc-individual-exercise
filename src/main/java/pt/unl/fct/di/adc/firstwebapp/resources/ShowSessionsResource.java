@@ -52,16 +52,12 @@ public class ShowSessionsResource {
             Query<Entity> query = Query.newEntityQueryBuilder()
                     .setKind("Token")
                     .build();
-
             QueryResults<Entity> tokens = datastore.run(query);
-
             List<JsonObject> list = new ArrayList<>();
+
             while (tokens.hasNext()) {
                 Entity e = tokens.next();
-
-                long currentTime = System.currentTimeMillis();
-                long expiresAt = e.getLong("token_expiresAt");
-                if (expiresAt > currentTime) {
+                if (!tokenService.isExpired(e)) {
                     JsonObject token = new JsonObject();
                     token.addProperty("tokenId", e.getString("token_id"));
                     token.addProperty("username", e.getString("token_user"));

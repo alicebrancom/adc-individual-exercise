@@ -34,8 +34,8 @@ public class LogoutResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response doLogout(LogoutData data) {
-        String username = data.input.username;
-        LOG.fine("Attempt to logout user: " + username);
+        String userToLogout = data.input.username;
+        LOG.fine("Attempt to logout user: " + userToLogout);
 
         TokenService tokenService = new TokenService(datastore);
         Response response = tokenService.validateToken(data.token);
@@ -51,7 +51,7 @@ public class LogoutResource {
             String tokenRole = data.token.role;
 
             if ((tokenRole.equals("USER") || tokenRole.equals("BOFFICER")) &&
-                    !username.equals(tokenUser)) {
+                    !userToLogout.equals(tokenUser)) {
                 txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
@@ -59,23 +59,16 @@ public class LogoutResource {
 
             Entity tokenEntity = tokenService.getTokenEntity(data.token);
 
-            if (tokenRole.equals("USER") || tokenRole.equals("BOFFICER")) {
+            if (userToLogout.equals(tokenUser)) {
                 txn.delete(tokenEntity.getKey());
             }
-            else { // ADMIN
-                if (tokenUser.equals(username)) {
-
-                    txn.delete(tokenEntity.getKey());
-                }
-                else {
-                    List<Entity> userTokens = tokenService.getUserTokens(username);
-                    for (Entity token : userTokens) {
-                        txn.delete(token.getKey());
-                    }
+            else {
+                List<Entity> userTokens = tokenService.getUserTokens(userToLogout);
+                for (Entity token : userTokens) {
+                    txn.delete(token.getKey());
                 }
             }
             txn.commit();
-
             SuccessMessage msg = new SuccessMessage(new Message("Logout successful"));
             return Response.ok(g.toJson(msg)).build();
 
