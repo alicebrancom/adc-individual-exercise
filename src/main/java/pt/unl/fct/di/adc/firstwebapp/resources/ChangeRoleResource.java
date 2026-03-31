@@ -56,12 +56,18 @@ public class ChangeRoleResource {
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            Entity updatedUser = Entity.newBuilder(user).set("user_role", data.input.newRole).build();
+            String newRole = data.input.newRole;
+            if (!(newRole.equals("USER") || newRole.equals("ADMIN") || newRole.equals("BOFFICER"))) {
+                ErrorMessage msg = new ErrorMessage(Errors.FORBIDDEN);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            Entity updatedUser = Entity.newBuilder(user).set("user_role", newRole).build();
             txn.put(updatedUser);
 
             QueryResults<Entity> tokens = tokenService.getUserTokens(userKey, txn);
             while (tokens.hasNext()) {
-                Entity updatedToken = Entity.newBuilder(tokens.next()).set("token_role", data.input.newRole).build();
+                Entity updatedToken = Entity.newBuilder(tokens.next()).set("token_role", newRole).build();
                 txn.put(updatedToken);
             }
 
