@@ -1,7 +1,5 @@
 package pt.unl.fct.di.adc.firstwebapp.resources;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.logging.Logger;
 
 import com.google.cloud.datastore.*;
@@ -38,48 +36,48 @@ public class DeleteResource {
         String userToDelete = data.input.username;
         LOG.fine("Attempt to delete user: " + userToDelete);
 
+        Transaction txn = datastore.newTransaction();
         TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
-        Key userKey = datastore.newKeyFactory().setKind("User").newKey(userToDelete);
-        Entity user = datastore.get(userKey);
-
-        if (user == null) {
-            ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
-            return Response.ok(g.toJson(msg)).build();
-        }
-        
-        String role = data.token.role;
-        if (role.equals("USER") || role.equals("BOFFICER")) {
-            ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
-            return Response.ok(g.toJson(msg)).build();
-        }
-
         try {
-            List<Entity> userTokens = tokenService.getUserTokens(userToDelete);
-            Transaction txn = datastore.newTransaction();
+            Response response = tokenService.validateToken(data.token, txn);
 
-            for (Entity token : userTokens) {
+            if (response.hasEntity()) {
+                return response;
+            }
+
+            String role = data.token.role;
+            if (!role.equals("ADMIN")) {
+                ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            Key userKey = datastore.newKeyFactory().setKind("User").newKey(userToDelete);
+            Entity user = txn.get(userKey);
+
+            if (user == null) {
+                ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            QueryResults<Entity> tokens = tokenService.getUserTokens(userKey, txn);
+            while (tokens.hasNext()) {
+                Entity token = tokens.next();
                 txn.delete(token.getKey());
             }
 
             txn.delete(userKey);
             txn.commit();
-            LOG.info("User deleted " + userToDelete);
 
+            LOG.info("User deleted: " + userToDelete);
             SuccessMessage msg = new SuccessMessage(new Message("Account deleted successfully"));
             return Response.ok(g.toJson(msg)).build();
 
-        } catch (Exception e) { // forbidden
+        } catch (Exception e) {
             LOG.severe("Error deleting user: " + e.getMessage());
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error deleting user.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

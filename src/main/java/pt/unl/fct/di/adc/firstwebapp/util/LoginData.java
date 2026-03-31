@@ -11,12 +11,4 @@ public class LoginData {
 
 		public Input() {}
 	}
-
-	private boolean nonEmptyOrBlankField(String field) {
-		return field != null && !field.isBlank();
-	}
-
-	public boolean validLogin() {
-		return nonEmptyOrBlankField(input.username) && nonEmptyOrBlankField(input.password);
-	}
 }

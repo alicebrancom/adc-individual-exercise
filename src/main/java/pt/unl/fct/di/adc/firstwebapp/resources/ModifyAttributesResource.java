@@ -2,6 +2,7 @@ package pt.unl.fct.di.adc.firstwebapp.resources;
 
 import java.util.logging.Logger;
 
+import com.google.cloud.datastore.*;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Consumes;
@@ -11,11 +12,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 
 import com.google.gson.Gson;
-import com.google.cloud.datastore.Key;
-import com.google.cloud.datastore.Entity;
-import com.google.cloud.datastore.Datastore;
-import com.google.cloud.datastore.Transaction;
-import com.google.cloud.datastore.DatastoreOptions;
 
 import pt.unl.fct.di.adc.firstwebapp.output.*;
 import pt.unl.fct.di.adc.firstwebapp.util.*;
@@ -41,32 +37,29 @@ public class ModifyAttributesResource {
             return Response.ok(g.toJson(msg)).build();
         }
 
-        TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
         Transaction txn = datastore.newTransaction();
         try {
+            TokenService tokenService = new TokenService(datastore);
+            Response response = tokenService.validateToken(data.token, txn);
+
+            if (response.hasEntity()) {
+                return response;
+            }
+
             Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
             Entity user = txn.get(userKey);
 
             if (user == null) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            Entity t = tokenService.getTokenEntity(data.token);
-            String tokenRole = t.getString("token_role"); // role of the account that will modify
-            String tokenUser = t.getString("token_user"); // username of the account that will modify
             String userRole = user.getString("user_role"); // role of the account that will be modified
+            String tokenRole = data.token.role; // role of the account that will modify
+            String tokenUser = data.token.username; // username of the account that will modify
 
             if ((tokenRole.equals("USER") && !tokenUser.equals(username)) ||
                     (tokenRole.equals("BOFFICER") && !(userRole.equals("USER") || tokenUser.equals(username)))) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
@@ -91,12 +84,11 @@ public class ModifyAttributesResource {
             return Response.ok(g.toJson(msg)).build();
 
         } catch (Exception e) {
-            txn.rollback();
             LOG.severe("Error modifying user attributes: " + e.getMessage());
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error modifying user attributes.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

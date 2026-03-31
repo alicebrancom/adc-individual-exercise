@@ -2,6 +2,7 @@ package pt.unl.fct.di.adc.firstwebapp.resources;
 
 import java.util.logging.Logger;
 
+import com.google.cloud.datastore.*;
 import org.apache.commons.codec.digest.DigestUtils;
 
 import jakarta.ws.rs.POST;
@@ -15,11 +16,6 @@ import jakarta.ws.rs.core.Response.Status;
 import pt.unl.fct.di.adc.firstwebapp.output.*;
 import pt.unl.fct.di.adc.firstwebapp.util.*;
 
-import com.google.cloud.datastore.Key;
-import com.google.cloud.datastore.Entity;
-import com.google.cloud.datastore.Datastore;
-import com.google.cloud.datastore.Transaction;
-import com.google.cloud.datastore.DatastoreOptions;
 import com.google.gson.Gson;
 
 @Path("/login")
@@ -39,18 +35,12 @@ public class LoginResource {
 		String username = data.input.username;
 		LOG.fine("Login attempt by user: " + username);
 
-		if (!data.validLogin()) {
-			ErrorMessage msg = new ErrorMessage(Errors.INVALID_INPUT);
-			return Response.ok(g.toJson(msg)).build();
-		}
-
-		Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
 		Transaction txn = datastore.newTransaction();
-
 		try {
+			Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
 			Entity user = txn.get(userKey);
+
 			if (user == null) {
-				txn.rollback();
 				ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
 				return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
 			}
@@ -59,6 +49,7 @@ public class LoginResource {
 			if (hashedPWD.equals(DigestUtils.sha512Hex(data.input.password))) {
 				AuthToken token = new AuthToken(username, user.getString("user_role"));
 				Key tokenKey = datastore.newKeyFactory()
+						.addAncestor(PathElement.of("User", username))
 						.setKind("Token")
 						.newKey(token.tokenId);
 
@@ -69,8 +60,10 @@ public class LoginResource {
 						        .set("token_issuedAt", token.issuedAt)
 						        .set("token_expiresAt", token.expiresAt)
 						        .build();
+
 				txn.put(tokenEntity);
 				txn.commit();
+
 				SuccessMessage msg = new SuccessMessage<>(new LoginOutput(token));
 				LOG.info("Login successful by user: " + username);
 				return Response.ok(g.toJson(msg)).build();
@@ -82,13 +75,10 @@ public class LoginResource {
 			}
 
 		} catch (Exception e) {
-			txn.rollback();
 			LOG.severe(e.getMessage());
 			return Response.status(Status.INTERNAL_SERVER_ERROR).build();
 		} finally {
-			if (txn.isActive()) {
-				txn.rollback();
-			}
+			if (txn.isActive()) txn.rollback();
 		}
 	}
 }

@@ -34,30 +34,28 @@ public class ShowRoleResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Response showUserRole(ShowRoleData data) {
         String username = data.input.username;
-        LOG.fine("Attempt to change user role: " + username);
+        LOG.fine("Attempt to show user role: " + username);
 
-        TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
+        Transaction txn = datastore.newTransaction();
         try {
-            Transaction txn = datastore.newTransaction(); // maybe not needed? remove maybe
-            Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
-            Entity user = txn.get(userKey);
+            TokenService tokenService = new TokenService(datastore);
+            Response response = tokenService.validateToken(data.token, txn);
 
-            if (user == null) {
-                txn.rollback();
-                ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
-                return Response.ok(g.toJson(msg)).build();
+            if (response.hasEntity()) {
+                return response;
             }
 
             String role = data.token.role;
             if (role.equals("USER")) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
+            Entity user = txn.get(userKey);
+
+            if (user == null) {
+                ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
                 return Response.ok(g.toJson(msg)).build();
             }
 
@@ -70,7 +68,7 @@ public class ShowRoleResource {
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error showing user role.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

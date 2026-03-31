@@ -36,19 +36,22 @@ public class ShowSessionsResource {
         LOG.fine("Attempt to show sessions");
 
         TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
-        String role = data.token.role;
-        if (role.equals("USER") || role.equals("BOFFICER")) {
-            ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
-            return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
-        }
-
+        Transaction txn = datastore.newTransaction();
         try {
+            Response response = tokenService.validateToken(data.token, txn);
+
+            if (response.hasEntity()) {
+                return response;
+            }
+
+            String role = data.token.role;
+            if (!role.equals("ADMIN")) {
+                ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
+                return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            txn.rollback();
+
             Query<Entity> query = Query.newEntityQueryBuilder()
                     .setKind("Token")
                     .build();
@@ -71,10 +74,10 @@ public class ShowSessionsResource {
             return Response.ok(g.toJson(m)).build();
 
         } catch (Exception e) {
-            LOG.severe("Error registering user: " + e.getMessage());
-            return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error registering user.").build();
+            LOG.severe("Error showing authenticated sessions: " + e.getMessage());
+            return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error showing authenticated sessions.").build();
         } finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

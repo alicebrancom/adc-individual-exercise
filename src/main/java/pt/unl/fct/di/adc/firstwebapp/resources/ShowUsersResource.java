@@ -35,20 +35,23 @@ public class ShowUsersResource {
     public Response showsUsers(ShowData data) {
         LOG.fine("Attempt to show users");
 
-        TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
-        String role = data.token.role;
-        if (role.equals("USER")) {
-            ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
-            return Response.ok(g.toJson(msg)).build();
-        }
-
+        Transaction txn = datastore.newTransaction();
         try {
+            TokenService tokenService = new TokenService(datastore);
+            Response response = tokenService.validateToken(data.token, txn);
+
+            if (response.hasEntity()) {
+                return response;
+            }
+
+            String role = data.token.role;
+            if (role.equals("USER")) {
+                ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
+                return Response.ok(g.toJson(msg)).build();
+            }
+
+            txn.rollback();
+
             Query<Entity> query = Query.newEntityQueryBuilder()
                     .setKind("User")
                     .build();
@@ -72,7 +75,7 @@ public class ShowUsersResource {
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error registering user.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

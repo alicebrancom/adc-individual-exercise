@@ -36,10 +36,6 @@ public class RegisterResource {
 	@Produces(MediaType.APPLICATION_JSON)
 	public Response registerUser(RegisterData data) {
 		String username = data.input.username;
-		String password = data.input.password;
-		String role = data.input.role;
-		String phone = data.input.phone;
-		String address = data.input.address;
 		LOG.fine("Attempt to register user: " + username);
 
 		if (!data.validRegistration()) {
@@ -47,13 +43,17 @@ public class RegisterResource {
 			return Response.ok(g.toJson(msg)).build();
 		}
 
+		String password = data.input.password;
+		String role = data.input.role;
+		String phone = data.input.phone;
+		String address = data.input.address;
+
+		Transaction txn = datastore.newTransaction();
 		try {
-			Transaction txn = datastore.newTransaction();
 			Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
 			Entity user = txn.get(userKey);
 
 			if (user != null) {
-				txn.rollback();
 				ErrorMessage msg = new ErrorMessage(Errors.USER_ALREADY_EXISTS);
 				return Response.ok(g.toJson(msg)).build();
 			}
@@ -80,7 +80,7 @@ public class RegisterResource {
 			return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error registering user.").build();
 		}
 		finally {
-			// No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+			if (txn.isActive()) txn.rollback();
 		}
 	}
 }

@@ -37,28 +37,26 @@ public class ChangePasswordResource {
         String username = data.input.username;
         LOG.fine("Attempt to change user password: " + username);
 
-        TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
+        Transaction txn = datastore.newTransaction();
         try {
-            Transaction txn = datastore.newTransaction();
-            Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
-            Entity user = txn.get(userKey);
+            TokenService tokenService = new TokenService(datastore);
+            Response response = tokenService.validateToken(data.token, txn);
+
+            if (response.hasEntity()) {
+                return response;
+            }
 
             if (!username.equals(data.token.username)) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
 
+            Key userKey = datastore.newKeyFactory().setKind("User").newKey(username);
+            Entity user = txn.get(userKey);
+
             String inputOldPwd = DigestUtils.sha512Hex(data.input.oldPassword);
 
             if (user == null || !user.getString("user_pwd").equals(inputOldPwd)) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.INVALID_CREDENTIALS);
                 return Response.ok(g.toJson(msg)).build();
             }
@@ -67,8 +65,8 @@ public class ChangePasswordResource {
             Entity updated = Entity.newBuilder(user).set("user_pwd", inputNewPwd).build();
             txn.put(updated);
             txn.commit();
-            LOG.info("User password changed " + username);
 
+            LOG.info("User password changed: " + username);
             SuccessMessage msg = new SuccessMessage(new Message("Password changed successfully"));
             return Response.ok(g.toJson(msg)).build();
 
@@ -77,7 +75,7 @@ public class ChangePasswordResource {
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error changing user password.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }

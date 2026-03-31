@@ -1,8 +1,8 @@
 package pt.unl.fct.di.adc.firstwebapp.resources;
 
-import java.util.List;
 import java.util.logging.Logger;
 
+import com.google.cloud.datastore.*;
 import jakarta.ws.rs.Produces;
 
 import jakarta.ws.rs.POST;
@@ -13,10 +13,6 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 
 import com.google.gson.Gson;
-import com.google.cloud.datastore.Entity;
-import com.google.cloud.datastore.Datastore;
-import com.google.cloud.datastore.Transaction;
-import com.google.cloud.datastore.DatastoreOptions;
 
 import pt.unl.fct.di.adc.firstwebapp.output.*;
 import pt.unl.fct.di.adc.firstwebapp.util.*;
@@ -37,37 +33,39 @@ public class LogoutResource {
         String userToLogout = data.input.username;
         LOG.fine("Attempt to logout user: " + userToLogout);
 
-        TokenService tokenService = new TokenService(datastore);
-        Response response = tokenService.validateToken(data.token);
-
-        if (response.hasEntity()) {
-            return response;
-        }
-
+        Transaction txn = datastore.newTransaction();
         try {
-            Transaction txn = datastore.newTransaction();
+            TokenService tokenService = new TokenService(datastore);
+            Response response = tokenService.validateToken(data.token, txn);
+
+            if (response.hasEntity()) {
+                return response;
+            }
 
             String tokenUser = data.token.username;
             String tokenRole = data.token.role;
 
             if ((tokenRole.equals("USER") || tokenRole.equals("BOFFICER")) &&
                     !userToLogout.equals(tokenUser)) {
-                txn.rollback();
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
                 return Response.ok(g.toJson(msg)).build();
             }
 
-            Entity tokenEntity = tokenService.getTokenEntity(data.token);
+            Key tokenKey = datastore.newKeyFactory()
+                    .addAncestor(PathElement.of("User", tokenUser))
+                    .setKind("Token").newKey(data.token.tokenId);
 
             if (userToLogout.equals(tokenUser)) {
-                txn.delete(tokenEntity.getKey());
+                txn.delete(tokenKey);
             }
             else {
-                List<Entity> userTokens = tokenService.getUserTokens(userToLogout);
-                for (Entity token : userTokens) {
-                    txn.delete(token.getKey());
+                Key userToLogoutKey = datastore.newKeyFactory().setKind("User").newKey(userToLogout);
+                QueryResults<Entity> tokens = tokenService.getUserTokens(userToLogoutKey, txn);
+                while (tokens.hasNext()) {
+                    txn.delete(tokens.next().getKey());
                 }
             }
+
             txn.commit();
             SuccessMessage msg = new SuccessMessage(new Message("Logout successful"));
             return Response.ok(g.toJson(msg)).build();
@@ -77,7 +75,7 @@ public class LogoutResource {
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("Error logging out user.").build();
         }
         finally {
-            // No need to rollback here, as we only have one transaction and it will be automatically rolled back if not committed.
+            if (txn.isActive()) txn.rollback();
         }
     }
 }
