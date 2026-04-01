@@ -33,7 +33,7 @@ public class ChangePasswordResource {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response changePasswordResource(ChangePasswordData data) {
+    public Response changeUserPassword(ChangePasswordData data) {
         String username = data.input.username;
         LOG.fine("Attempt to change user password: " + username);
 
