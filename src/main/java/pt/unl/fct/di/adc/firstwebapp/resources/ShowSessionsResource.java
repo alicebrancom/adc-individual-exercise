@@ -47,7 +47,7 @@ public class ShowSessionsResource {
             String role = data.token.role;
             if (!role.equals("ADMIN")) {
                 ErrorMessage msg = new ErrorMessage(Errors.UNAUTHORIZED);
-                return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+                return Response.ok(g.toJson(msg)).build();
             }
 
             txn.rollback();

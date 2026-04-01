@@ -42,7 +42,7 @@ public class LoginResource {
 
 			if (user == null) {
 				ErrorMessage msg = new ErrorMessage(Errors.USER_NOT_FOUND);
-				return Response.ok(msg).type(MediaType.APPLICATION_JSON).build();
+				return Response.ok(g.toJson(msg)).build();
 			}
 
 			String hashedPWD = user.getString("user_pwd");
